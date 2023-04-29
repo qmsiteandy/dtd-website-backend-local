@@ -123,14 +123,161 @@ add_action('init', 'prefix_register_dtd_routes_projects');
     }
 ```
 
-# 結果展示
+### 結果展示
 <img src="https://i.imgur.com/X8SDU5l.png" width="350px"> 
 
 ![](https://i.imgur.com/nII3dY7.gif)
 
 ## 文章列表 (系務公告/師生榮譽榜)
+系網的文章分為兩種
+1. 系務公告
+2. 師生榮譽榜
+
+列表功能也一頁面需求分為三種：
+1. 首頁需要從「系務公告」及「師生榮譽榜」各取最新五筆文章標題資訊
+2. 系務公告頁需要撈取 20 筆文章，並實現分頁功能。
+3. 師生榮譽榜同樣需要撈取 20 筆文章，並實現分頁功能。
+
+>相關程式碼都在 [search-route-post.php](https://github.com/qmsiteandy/dtd-website-backend-local/blob/master/app/public/wp-content/mu-plugins/search-route-post.php)
+
+### 首頁列表
+
+`postHomePageSearchResults` 路由函式中負責撈取兩類文章各五筆資訊，運算邏輯如下：
+1. 判斷是否有 queryString 參數 postPerGroup 設定取得筆數，若無則設定預設值為 5。
+    ```php
+    function postHomePageSearchResults($data) {
+        //引數 (default = 5))
+        $postPerGroup = ( $data['postPerGroup'] ) ? $data['postPerGroup'] : 5;
+        ...
+    ```
+2. 宣告 `$result` 並設定內容
+    ```php
+    $results = array(
+         array(
+            'groupId' => 0,
+            'title' => '系務公告 / Announcement',
+            'list' => array() // 空陣列
+         ),
+         array(
+            'groupId' => 1,
+            'title' => '師生榮譽榜 / Achievement',
+            'list' => array()
+         ),
+      );
+    ```
+3. 設定 `WP_Query` 抓取 `announcement` 分類的文章，並設定 `posts_per_page`。再用 `$mainQuery->have_posts()` 迴圈 及 `$mainQuery->the_post();` 指引到對應文章，將資訊一一放入 `$result` 陣列中。
+
+    >其中 `IsWithinSevenDays()` 是用來判斷最新文章的自訂函式，邏輯為判斷發文時間是否距今 7 日內，並回傳 boolean 值。 
+
+
+    ```php
+    //將系務公告的post放入result
+      $mainQuery = new WP_Query(array(
+         'post_type' => 'post',
+         'category_name' => 'announcement',
+         'ignore_sticky_posts' => true,   //設定至頂無效
+         'posts_per_page' => $postPerGroup,
+      ));
+
+      while($mainQuery->have_posts()) {
+         $mainQuery->the_post();
+
+         array_push($results[0]['list'], array(
+            'id' => get_the_ID(),
+            'title' => get_the_title(),
+            'date' => get_the_date('Y/m/d'),
+            'isLatest' => IsWithinSevenDays(),
+         ));
+      }
+    ```
+4. 同第三步驟將另一分類文章的列表放入 $result 中，最後回傳給 Client。
+
+### 「系務公告」及「師生榮譽榜」的列表 
+1. 從 queryString 取得頁碼、每頁數量的參數，若無則設為預設值。
+2. `WP_Query` 設定撈取對應文章項目
+3. 使用迴圈將資料一一推入 `$result` 陣列中。
+    >使用 `IsWithinSevenDays()` 自訂函式判斷是否為近期文章  
+    >使用 `ConvertContentLabel()` 去除多餘的 HTML 符號
+
+```php
+//師生榮譽榜葉面文章，預設一頁20筆
+function postAchievementsPageSearchResults($data) {
+    $page = ( $data['page'] ) ? $data['page'] : 1;
+    $postPerPage = ( $data['postPerPage'] ) ? $data['postPerPage'] : 20;
+
+    $mainQuery = new WP_Query(array(
+        'post_type' => 'post',
+        'category_name' => 'achievement',
+        'ignore_sticky_posts' => true,   //設定置頂無效
+        'posts_per_page' => $postPerPage,   //每頁顯示N筆文章
+        'paged' => $page  //切換到第幾頁
+    ));
+
+    $results = array();
+
+    while($mainQuery->have_posts()) {
+        $mainQuery->the_post();
+
+        array_push($results, array(
+        'id' => get_the_ID(),
+        'title' => get_the_title(),
+        'isLatest' => IsWithinSevenDays(), //判斷是否為近期文章的自訂函式
+        'content' => ConvertContentLabel(get_the_content()), //去除多餘的HTML符號
+        ));
+    }
+
+    return $results;
+}
+```
+
+### 列表功能展示
+![](https://i.imgur.com/cgq2dMx.png)
+![](https://i.imgur.com/DMHNWv3.png)
 
 ## 單篇文章內容
+當使用者在列表中點選一篇文章時，呼叫取得單篇文章內容。
+>相關程式碼都在 [search-route-post.php](https://github.com/qmsiteandy/dtd-website-backend-local/blob/master/app/public/wp-content/mu-plugins/search-route-post.php)
+
+路由設定邏輯如下：
+1. `WP_Query` 撈取符合 queryString `$data['postID']` 的文章
+2. 如果有符合的文章，取得該文章的永久連結
+3. `wp_remote_get` 取得連結內容的 body
+4. 用自訂函式 `ConvertContentLabel()` 消除不需要的 HTML 標籤符號
+5. 最後將資料存入 `$result` 並回傳
+>原本用 `wp_remote_get` 撈取的資訊會包含很多「\r」符號需要消除、並且為了將完整的HTML內容以字串形式回傳給 Client，需要將「"」符號修改成「\"」
+
+```php
+function postSearchResults($data) {
+
+    $results = array();
+
+    $mainQuery = new WP_Query(array(
+        'post_type' => 'post',
+        'p' => $data['postID']
+    ));
+
+    //以postID引數指定文章
+    if($data['postID']){
+
+        if($mainQuery->have_posts()) {
+        $mainQuery->the_post();
+        $url = get_permalink(get_the_ID());
+
+        //wp_remote_get直接取得該文章single page的所有內容(以HTML傳送)
+        $content = wp_remote_get($url)["body"];
+        $content = ConvertContentLabel($content);
+
+        $results = array(
+            'id' => get_the_ID(),
+            'title' => get_the_title(),
+            'isLatest' => IsWithinSevenDays(),
+            'content' => $content,
+        );
+        }
+        return $results;
+    }
+}
+```
 
 ## 教師資訊
 

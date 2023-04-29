@@ -29,8 +29,8 @@
          }
          return $results;
       }
+      //沒設定 ID 參數代表取得所有post文章，系統預設取得最新10筆
       else{
-         //取得所有post文章
          while($mainQuery->have_posts()) {
             $mainQuery->the_post();
    

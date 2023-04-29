@@ -238,6 +238,7 @@ function postAchievementsPageSearchResults($data) {
 當使用者在列表中點選一篇文章時，呼叫取得單篇文章內容。
 >相關程式碼都在 [search-route-post.php](https://github.com/qmsiteandy/dtd-website-backend-local/blob/master/app/public/wp-content/mu-plugins/search-route-post.php)
 
+### 設定
 路由設定邏輯如下：
 1. `WP_Query` 撈取符合 queryString `$data['postID']` 的文章
 2. 如果有符合的文章，取得該文章的永久連結
@@ -278,6 +279,15 @@ function postSearchResults($data) {
     }
 }
 ```
+
+### 功能展示
+經過設定後，可以將 Wordpress 後台發布的文章 HTML 內容，回傳至 Client 端。
+
+後台內容：
+![](https://i.imgur.com/tfzzHC0.png)
+
+前端畫面：
+![](https://i.imgur.com/22I9Z5z.png)
 
 ## 教師資訊
 

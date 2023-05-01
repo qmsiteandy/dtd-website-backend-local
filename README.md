@@ -4,6 +4,9 @@
 
 也就是改造成：前端使用 React，後台文章管理系統&資料庫則使用 Wordpress，並透過 Restful API 串接。
 
+## 系網連結
+[https://dtd.ntue.edu.tw/](https://dtd.ntue.edu.tw/)
+
 ## 我的工作
 於系網團隊中擔任後端組。其中我主要負責規劃文章資料分類、以及開發 Restful API 讓前端能撈取所需要的文章資訊。至於建立 Wordpress 及伺服器架設由另一位學長負責。
 

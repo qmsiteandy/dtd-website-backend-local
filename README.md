@@ -534,6 +534,9 @@ add_action( 'init', 'create_taxonomies');
     return $results;
     ```
 
+### 功能展示
+![](https://i.imgur.com/qqHAvg1.png)
+
 # 後記
 目前網路上較少看到將 Wordpress 單純作為後端系統的專案，能實際參與開發讓我很有成就感。
 

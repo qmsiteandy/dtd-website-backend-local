@@ -11,6 +11,17 @@
 這個 Repo 的內容是進行開發及測試時，在自己電腦建立 Local Wordpress 的資料，待測試功能完畢後才將程式碼複製到系網正式環境的程式碼中。而我撰寫的部分集中在 [這個位置](https://github.com/qmsiteandy/dtd-website-backend-local/tree/master/app/public/wp-content/mu-plugins)。
 
 # 功能說明
+大綱：  
+- [客製化 Wordpress 後台介面，建立各文章類型](#客製化-wordpress-後台介面建立各文章類型-post-type)  
+- [Router 路由設定](#router-路由設定)
+- [首頁 Banner 圖片資料](#首頁-banner-圖片資料)
+- [文章列表 (系務公告/師生榮譽榜)](#文章列表-系務公告師生榮譽榜)
+- [單篇文章內容](#單篇文章內容)
+- [教師資訊](#教師資訊)
+- [畢業作品/課程作品](#畢業作品課程作品)
+
+
+
 ## 客製化 Wordpress 後台介面，建立各文章類型 (Post-Type)
 ### 說明
 考量到系網許多頁面內容需經常修改，為方便系上助教調整，我規劃設計多種類型的「文章發布類型 Post-type」讓助教可以針對內容選取對應的發文方式，包含：
@@ -290,6 +301,104 @@ function postSearchResults($data) {
 ![](https://i.imgur.com/22I9Z5z.png)
 
 ## 教師資訊
+回傳所有教師資訊並以教學領域分組
+
+>相關程式碼在 [search-route-staff.php](https://github.com/qmsiteandy/dtd-website-backend-local/blob/master/app/public/wp-content/mu-plugins/search-route-staff.php)
+
+### 設定
+1. 在路由函式中設定 `WP_Query` 搜尋方式，並加入 `s` 允許加入 queryString 參數 `term` 進行教師搜尋 
+    ```php 
+    function staffSearchResults($data) {
+      $mainQuery = new WP_Query(array(
+         'post_type' => 'staff',
+         'posts_per_page' => -1, //ALL
+         's' => sanitize_text_field($data['term']) //搜尋 query 參數
+      ));
+    ```
+2. 如果取得的文章數大於一篇 (代表是要求所有教師資訊)，先建立 `$result` 內容
+    ```php
+    if($mainQuery->post_count > 1){
+        $results = array(
+            array(
+                'groupid' => 0,
+                'title' => "專任教師/互動科技領域",
+                'list' => array(),
+            ),
+            array(
+                'groupid' => 1,
+                'title' => "專任教師/遊戲設計領域",
+                'list' => array(),
+            ),
+            ...
+        );
+    ```
+3. 使用迴圈將資訊一篇一篇加到 `$result` 中
+    ```php
+    while($mainQuery->have_posts()) {
+        $mainQuery->the_post();
+
+        $groupID = 0;
+        switch(get_field('groupTitle')){
+        case "專任教師/互動科技領域":
+            $groupID = 0; break;
+        case "專任教師/遊戲設計領域":
+            $groupID = 1; break;
+        ...
+    ```
+4. 取得教師的資訊並推入對應分組陣列中。這邊我設定 `ReturnStaffCollection()` 自訂函式用來控管要那些資料項目。
+    ```php
+        $collection = ReturnStaffCollection();
+        array_push($results[$groupID]['list'], $collection);  
+        
+        ...
+    ```
+    ```php
+    //用來控管需要哪些資料項目
+    function ReturnStaffCollection(){
+        $collection = array(
+            'id' => get_the_ID(),
+            'groupTitle' => get_field('groupTitle'),
+            'sortWeight' => get_field('sortWeight'),
+            'teacherName' => get_field('teacherName'),
+            'englishName' => get_field('englishName'),
+            'title' => get_field('title'),
+            'phone' => get_field('phone'),
+            'room' => get_field('room'),
+            'website' => get_field('website'),
+            'education' => get_field('education'),
+            'website' => get_field('website'),
+            'skill' => get_field('skill'),
+            'email' => get_field('email'),
+            'imgUrl' => get_field('imgUrl')['url'],);
+        return $collection;
+    }
+    ```
+5. 每增加一位教師資料後，依據排序權重使用 Selection sort 調整教師資料的順序。(系上要求頁面需依據教授值等排序)
+    ```php
+    //增加教師後，依據sort_wright排序
+    for($i = 0; $i < count($results[$groupID]['list']); $i++){
+        $top_sort_index = $i; //紀錄最大值的 index
+        // 找尋最大值的 index
+        for($j = $i + 1; $j < count($results[$groupID]['list']); $j++){
+            if($results[$groupID]['list'][$j]['sortWeight'] > $results[$groupID]['list'][$top_sort_index]['sortWeight']){
+                $top_sort_index = $j;
+            }
+        }
+        //交換內容
+        $t = $results[$groupID]['list'][$top_sort_index];
+        $results[$groupID]['list'][$top_sort_index] = $results[$groupID]['list'][$i];
+        $results[$groupID]['list'][$i] = $t;
+    }
+    ```
+6. 回傳結果
+
+### 功能展示
+後台管理介面設定教師資訊
+![](https://i.imgur.com/xAOTqXB.png)
+    
+前端頁面展示教師列表，點進去可以看到教師詳細資訊
+![](https://i.imgur.com/U2GeZeq.png)
+![](https://i.imgur.com/DWurMN3.png)
 
 ## 畢業作品/課程作品
 

@@ -401,4 +401,142 @@ function postSearchResults($data) {
 ![](https://i.imgur.com/DWurMN3.png)
 
 ## 畢業作品/課程作品
+用來刊登學生的作品，回傳內容依作品類型分組，並且每次作品排版順序都會不同。
 
+>相關的程式碼  
+> [search-route-classProject.php ](https://github.com/qmsiteandy/dtd-website-backend-local/blob/master/app/public/wp-content/mu-plugins/search-route-classProject.php)  
+> [search-route-graduateProject.php](https://github.com/qmsiteandy/dtd-website-backend-local/blob/master/app/public/wp-content/mu-plugins/search-route-graduateProject.php)
+
+
+### 建立作品標籤
+首先需要在設定新的作品標籤，相關程式寫在 [dtd-post-types.php](https://github.com/qmsiteandy/dtd-website-backend-local/blob/master/app/public/wp-content/mu-plugins/dtd-post-types.php) 中。
+```php
+//建立custom post-type中的分類
+function create_taxonomies() 
+{
+   //class_projects、excellent_projects使用同一組分類項目
+   register_taxonomy('taxonomy_workType',array('class_projects', 'excellent_projects' ), array(
+    'hierarchical' => true,
+    'labels' => array(
+      'name' => '作品分類',
+      'all_items' => '全部',
+      'edit_item' => '編輯', 
+    ),
+    'show_in_rest' => true,
+    'show_admin_column' => true,
+    'show_ui' => true,
+    'public' => true,
+    'query_var' => true,
+    'rewrite' => array( 'slug' => 'taxonomy_workType' ),
+   ));
+}
+add_action( 'init', 'create_taxonomies');
+```
+接著就能在這個文章類型中找到標籤 (不過我取名叫作品分類)，並在作品分類中建立多種課程作品標籤。
+![](https://i.imgur.com/rYX3dMY.png)
+
+## 程式設定
+1. 路由函式中設定 `WP_Query` 搜尋全部作品，並設定 `'p' => $data['postID']` 提供使用 `queryString` 搜尋單筆文章內容的方法。假如只要一篇文章，那 
+`WP_Query` 只會取得一篇資料，並直接回傳。
+
+    ```php
+    function classProjectSearchResults($data) {
+        
+        $mainQuery = new WP_Query(array(
+            'post_type' => 'class_projects',
+            'posts_per_page' => -1, //ALL
+            'p' => $data['postID'],  //用PostID搜尋特定文章
+        ));
+        
+        //如果要求特定文章，WP_Query應該只會取得一篇資料，就只回傳那篇
+        if($data['postID']){
+            if($mainQuery->have_posts()) {
+                $mainQuery->the_post();
+                $collection = ClassProject_ReturnCollection();
+            }
+            return $collection;
+        }
+        ...
+
+    ```
+
+2. 如果 queryString 有設定 `workType` 參數代表只要顯示某一項標籤的作品資料，會在撈取的所有作品使用迴圈，一一判定是否有符合的標籤，若有則插入到陣列中隨意位置。
+    > - `IsPostHasTheTaxonomy($workType)` 函式來判斷現在迴圈指向的文章是否擁有該標籤。
+    > - `RandomInsertCollection()` 函式用來將文章的內容插入到陣列中的隨意一個 index 以達到隨機排序作品的功能。
+    ```php
+    $workType = ($data['workType']) ;
+
+    //如果要求特定作品分類
+    if($workType != null){
+
+        $results = array();
+        array_push($results, array(
+            'sortTitle' => $workType,
+            'sortList' => array()
+        ));
+
+        while($mainQuery->have_posts()) {
+            $mainQuery->the_post();
+
+            //如果這篇文章有特定的分類標籤
+            if(ClassProject_IsPostHasTheTaxonomy($workType)){
+                $collection = ClassProject_ReturnCollection();
+                $results[0]['sortList'] = ClassProject_RandomInsertCollection($results[0]['sortList'], $collection);
+            }
+        }
+        return $results;
+    }
+    ```
+3. 若沒有指定要哪一類則會將所有作品分類並回傳。首先取得所有分類項目並設定 `$result` 內容。
+    ```php
+    //取得全部的課程分類
+        $taxonomy = get_terms([
+            'taxonomy' => 'taxonomy_workType',
+            'hide_empty' => false,
+        ]);
+
+        $results = array();
+
+        for($i = 0; $i < count($taxonomy); $i++){
+        array_push($results, array(
+            'sortId' => $taxonomy[$i]->term_id,
+            'sortTitle' => ClassProject_ReturnFiltedTaxonomyName($taxonomy[$i]->name),
+            'sortList' => array()
+        ));
+    }
+    ```
+4. 透過迴圈 `while($mainQuery->have_posts()){}` 迴圈判斷每一項作品屬於哪個分類，並插到 `$result` 中的對應位置。
+    > 同樣使用
+    > - `IsPostHasTheTaxonomy($workType)` 函式來判斷現在迴圈指向的文章是否擁有該標籤。
+    > - `RandomInsertCollection()` 函式用來將文章的內容插入到陣列中的隨意一個 index 以達到隨機排序作品的功能。
+
+    ```php
+    while($mainQuery->have_posts()) {
+        $mainQuery->the_post();
+
+        $collection = ClassProject_ReturnCollection();
+
+        for($i = 0; $i < count($results); $i++){
+            if(ClassProject_IsPostHasTheTaxonomy($results[$i]['sortTitle'])){
+                $results[$i]['sortList'] = ClassProject_RandomInsertCollection($results[$i]['sortList'], $collection);
+            }
+        }
+    }
+    ```
+5. 最後消除 `$result` 中沒有作品的標籤項目，並回傳結果。
+    ```php
+    //消除沒有作品的分類項目
+    for($i = count($results) - 1; $i >= 0; $i--){
+        if(count($results[$i]['sortList']) == 0){
+            array_splice($results, $i, 1);
+        }
+    }
+    return $results;
+    ```
+
+# 後記
+目前網路上較少看到將 Wordpress 單純作為後端系統的專案，能實際參與開發讓我很有成就感。
+
+雖然現在看程式並沒有使用到甚麼困難技術或演算邏輯，但我認為這項專案最困難的點在於「了解使用者的需求並做設計」。需要與系上助教不斷討論，了解它們在管理文章或系網資訊的習慣，並依據習慣將資料分類；同時還需要與前端不斷開會訂定 API 的呼叫方式及回傳格式；有時也需要針對資料撈取的演算邏輯做優化，以此提升系網 Loading 速度等等，有許多沒想過的細節。
+
+經過半年開發總算完成預期功能，目前助教也能輕易上手使用，專案也要傳承給學弟妹了。待未來如果要開發自己的部落格網頁，我也期待自己能將這段經驗用上。
